@@ -173,3 +173,28 @@ double time_FringeRotate2(int repeat_count, const float2* gpu_data, const float*
         });
 
 }
+
+// Unpack.
+
+std::vector<float2> run_unpack2bit_2chan_fast(const std::vector<int8_t>& packed, int packed_offset, int packed_stride, const std::vector<int32_t> shifts, int nant, int nfft, int fftwidth) {
+    constexpr int npol = 2;
+
+    int block_width = 512;
+    dim3 block(nblocks(fftwidth/2, block_width), nfft);
+
+    gpu_array<int8_t> gpu_packed(packed);
+    gpu_array<int32_t> gpu_shifts(shifts);
+
+    int result_sz = npol*nant*fftwidth*nfft;
+    gpu_array<float2> gpu_unpacked(result_sz);
+
+    for (int i = 0; i<nant; ++i) {
+	const int8_t* packed_start = gpu_packed.data()+packed_stride+packed_offset;
+	const int32_t* shifts_start = gpu_shifts.data()+i*nfft;
+	float2* unpacked_start = gpu_unpacked.data()+npol*i*fftwidth*nfft;
+
+	unpack2bit_2chan_fast<<<block, block_width>>>(unpacked_start, packed_start, shifts_start, fftwidth);
+    }
+
+    return gpu_unpacked;
+}

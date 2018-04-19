@@ -158,6 +158,76 @@ TEST(gxkernel, CrossCorr) {
     }
 }
 
+struct packed_set {
+    std::vector<int8_t> packed;
+    std::vector<int32_t> shifts;
+    int packed_offset;
+    int packed_stride;
+};
+
+packed_set generate_random_packed_data(int nant, int nfft, int fftwidth) {
+    packed_set P;
+
+    constexpr int npol = 2;
+    constexpr int max_shift = 4;
+
+    P.shifts = random_int_data(nant*nfft, -max_shift, max_shift);
+    for (auto& s: P.shifts) s = 2*(s/2); // restrict to even
+
+    int samp_per_antenna = (2*max_shift+nfft*fftwidth/2)*npol;
+    P.packed_stride = samp_per_antenna/4+1;  // 2 bits per sample
+    P.packed_offset = (max_shift*npol)/4;
+
+    P.packed = random_int8_data(P.packed_stride*nant, -128, 127);
+    return P;
+}
+
+std::vector<float2> expected_unpack2bit_2chan(const packed_set& P, int nant, int nfft, int fftwidth) {
+    constexpr float HiMag = 3.3359;
+    const float lut4level[4] = {-HiMag, -1.0, 1.0, HiMag};
+
+    int s = nfft*fftwidth;
+    std::vector<float2> unpacked(nant*2*s);
+    for (int i = 0; i<nant; ++i) {
+        int unpacked_base = i*2*s;
+
+        for (int j = 0; j<nfft; ++j) {
+            int shift = P.shifts[i*nfft+j];
+            int packed_base = P.packed_offset + (i*P.packed_stride - shift)/2;
+            unpacked_base += fftwidth;
+
+            for (int k = 0; k<fftwidth/2; k+=2) {
+                unsigned char b = P.packed[packed_base+k/2];
+                float2 a00 = {lut4level[b&3], 0};
+                b>>=2;
+                float2 a10 = {lut4level[b&3], 0};
+                b>>=2;
+                float2 a01 = {lut4level[b&3], 0};
+                b>>=2;
+                float2 a11 = {lut4level[b&3], 0};
+
+                unpacked[k] = a00;
+                unpacked[k+1] = a01;
+                unpacked[s+k] = a10;
+                unpacked[s+k+1] = a11;
+            }
+        }
+    }
+    return unpacked;
+}
+
+TEST(gxkernel, unpack2bit_2chan_fast) {
+    int nant = 6;
+    int nfft = 3000;
+    int fftwidth = 1024;
+
+    packed_set P = generate_random_packed_data(nant, nfft, fftwidth);
+
+    auto expected = expected_unpack2bit_2chan(P, nant, nfft, fftwidth);
+    auto result = run_unpack2bit_2chan_fast(P.packed, P.packed_stride, P.packed_offset, P.shifts, nant, nfft, fftwidth);
+    EXPECT_EQ(expected, result);
+}
+
 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
