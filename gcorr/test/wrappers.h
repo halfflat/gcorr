@@ -14,3 +14,6 @@ std::vector<float2> run_CrossCorr(const std::vector<float2>& data, int nant, int
 double time_CrossCorrAccumHoriz(int repeat_count, const float2* gpu_data, int nant, int nfft, int nchan, int fftwidth);
 double time_CCAH2(int repeat_count, const float2* gpu_data, int nant, int nfft, int nchan, int fftwidth);
 double time_CrossCorr(int repeat_count, const float2* gpu_data, int nant, int nfft, int nchan, int fftwidth);
+double time_FringeRotate(int repeat_count, const float2* gpu_data, const float* gpu_rotvec, int nant, int nfft, int fftwidth);
+double time_FringeRotate2(int repeat_count, const float2* gpu_data, const float* gpu_rotvec, int nant, int nfft, int fftwidth);
+

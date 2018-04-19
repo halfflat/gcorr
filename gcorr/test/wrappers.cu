@@ -150,3 +150,26 @@ double time_CrossCorr(int repeat_count, const float2* gpu_data, int nant, int nf
             finaliseAccum<<<accumBlocks, block_width>>>(gpu_baselinedata.data(), parallelAccum, nfft/parallelAccum);
         });
 }
+
+// No unit test for FringeRotate routines yet.
+
+double time_FringeRotate(int repeat_count, const float2* gpu_data, const float* gpu_rotvec, int nant, int nfft, int fftwidth) {
+    int block_width = 512;
+    dim3 fringeBlocks(nblocks(fftwidth, block_width), nfft);
+
+    return run_kernel(repeat_count,
+	[&]() {
+            FringeRotate<<<fringeBlocks, block_width>>>((float2*)gpu_data, (float*)gpu_rotvec);
+        });
+}
+
+double time_FringeRotate2(int repeat_count, const float2* gpu_data, const float* gpu_rotvec, int nant, int nfft, int fftwidth) {
+    int block_width = 512;
+    dim3 fringeBlocks(nblocks(fftwidth, block_width), nfft);
+
+    return run_kernel(repeat_count,
+	[&]() {
+            FringeRotate2<<<fringeBlocks, block_width>>>((float2*)gpu_data, (float*)gpu_rotvec);
+        });
+
+}

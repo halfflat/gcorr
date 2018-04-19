@@ -35,3 +35,12 @@ std::vector<float2> random_cfloat_data(std::size_t n, float vmin, float vmax, in
     });
     return data;
 }
+
+std::vector<float> random_float_data(std::size_t n, float vmin, float vmax, int seed) {
+    std::minstd_rand R(seed);
+    std::uniform_real_distribution<float> U(vmin, vmax);
+
+    std::vector<float> data(n);
+    std::generate(data.begin(), data.end(), [&]() { return U(R); });
+    return data;
+}
