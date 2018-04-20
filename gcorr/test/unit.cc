@@ -93,7 +93,7 @@ TEST(gxkernel, CrossCorrAccumHoriz) {
 	int nant = 5;
 	int fftwidth = 1024;
 	int nchan = 1024;
-	int nfft = 100;
+	int nfft = 128;
 
         size_t datasz = pol*nant*fftwidth*nfft;
 	auto data = random_cint_data(datasz, -5, 5);
@@ -127,7 +127,7 @@ TEST(gxkernel, CCCAH2) {
 	int nant = 5;
 	int fftwidth = 1024;
 	int nchan = 1024;
-	int nfft = 100;
+	int nfft = 128;
 
         size_t datasz = pol*nant*fftwidth*nfft;
 	auto data = random_cint_data(datasz, -5, 5);
@@ -138,6 +138,45 @@ TEST(gxkernel, CCCAH2) {
     }
 }
 
+#if 1
+TEST(gxkernel, CCCAH3) {
+    constexpr int pol = 2;
+
+    {
+	int nant = 3;
+	int fftwidth = 512;
+	int nchan = 256;
+	int nfft = 4;
+
+        size_t datasz = pol*nant*fftwidth*nfft;
+	auto data = random_cint_data(datasz, -5, 5);
+
+	auto expected = expected_crosscorraccum<pol>(data, nant, nfft, nchan, fftwidth);
+	auto result = run_CCAH3(data, nant, nfft, nchan, fftwidth);
+	EXPECT_EQ(expected, result);
+	for (int i=0; i<result.size(); ++i) {
+	    ASSERT_EQ(expected[i], result[i]) << "unequal at i=" << i;
+	}
+    }
+    {
+	int nant = 5;
+	int fftwidth = 1024;
+	int nchan = 1024;
+	int nfft = 128;
+
+        size_t datasz = pol*nant*fftwidth*nfft;
+	auto data = random_cint_data(datasz, -5, 5);
+
+	auto expected = expected_crosscorraccum<pol>(data, nant, nfft, nchan, fftwidth);
+	auto result = run_CCAH3(data, nant, nfft, nchan, fftwidth);
+	EXPECT_EQ(expected, result);
+	for (int i=0; i<result.size(); ++i) {
+	    ASSERT_EQ(expected[i], result[i]) << "unequal at i=" << i;
+	}
+    }
+}
+#endif
+
 
 TEST(gxkernel, CrossCorr) {
     // require nchan*2=fftwidth and nchan a multiple of 512.
@@ -147,7 +186,7 @@ TEST(gxkernel, CrossCorr) {
 	int nant = 3;
 	int fftwidth = 1024;
 	int nchan = 512;
-	int nfft = 3000;
+	int nfft = 1024;
 
         size_t datasz = pol*nant*fftwidth*nfft;
 	auto data = random_cint_data(datasz, -5, 5);

@@ -65,7 +65,6 @@ double time_CrossCorrAccumHoriz(int repeat_count, const float2* gpu_data, int na
 	});
 }
 
-
 std::vector<float2> run_CCAH2(const std::vector<float2>& data, int nant, int nfft, int nchan, int fftwidth) {
     constexpr int npol = 2;
     int nantxp = nant*npol;
@@ -98,6 +97,185 @@ double time_CCAH2(int repeat_count, const float2* gpu_data, int nant, int nfft, 
 	});
 }
 
+// This is stupidly slow:
+#if 0
+__global__ void CCAH3(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
+    extern __shared__ float2 h[];
+
+    int t = threadIdx.x+blockIdx.x*blockDim.x;
+    if (t>=nchan) return;
+    int block_width = blockDim.x;
+
+    // blockIdx.y: index of first vector (2*antennaindex+polindex)
+
+    int s = nfft*fftwidth;
+
+    int i = blockIdx.y;
+    int j0 = 2*(i/2+1);
+
+    int ai = i/2;
+    int b = 4*(ai*nant-ai*(ai+1)/2) + 2*(i-2*ai);
+
+    const float2* iv = ants+i*s+t;
+    const float2* jv = ants+j0*s+t;
+
+    float2 u = iv[0];
+    int hoff = threadIdx.x;
+    for (int j = j0; j<2*nant; ++j) {
+	float2 v = jv[0];
+	float2 z;
+	z.x = u.x*v.x + u.y*v.y;
+	z.y = u.y*v.x - u.x*v.y;
+	h[hoff] = z;
+
+	jv += s;
+	hoff += block_width;
+    }
+
+    for (int k = fftwidth; k<s; k += fftwidth) {
+	u = iv[k];
+	jv = ants+j0*s+t;
+
+	int hoff = threadIdx.x;
+	for (int j = j0; j<2*nant; ++j) {
+	    float2 v = jv[k];
+	    float2 z;
+	    z.x = u.x*v.x + u.y*v.y;
+	    z.y = u.y*v.x - u.x*v.y;
+	    h[hoff].x += z.x;
+	    h[hoff].y += z.y;
+
+	    jv += s;
+	    hoff += block_width;
+	}
+    }
+
+    float oonfft = 1.f/nfft;
+
+    hoff = threadIdx.x;
+    for (int j = j0; j<2*nant; ++j) {
+	float2 a = h[hoff];
+	a.x *= oonfft;
+	a.y *= oonfft;
+
+	int dj = j-j0;
+	int aj = 2*(dj/2);
+	accum[(b+aj*2+(dj-aj))*nchan+t] = a;
+	hoff += block_width;
+    }
+}
+#elif 0
+constexpr int ccah3_cwidth = 4096;
+// Plan:
+//  1.  Use shared mem for vector i cache with blockDim.x == ccah3_width.'
+//      split vector horizontally in griDim.x blocks, gridDim.x*blockDim.x>=nchan*nfft.
+//      For ease of impl, presume nchan|ccah3_width.
+//  2.  Each block loads k nchan-blocks for vector i into cache.
+//  3.  Horizontal accumulation is performed serially across vectors j; either pre-zero
+//      accumulator or run left-side (offset 0) kernel first.
+
+__global__ void CCAH3(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
+    extern __shared__ float2 h[ccah3_cwidth];
+
+    int t = threadIdx.x+blockIdx.x*blockDim.x;
+    if (t>=nchan) return;
+    int block_width = blockDim.x;
+
+    // blockIdx.y: index of first vector (2*antennaindex+polindex)
+
+    int s = nfft*fftwidth;
+
+    int i = blockIdx.y;
+    int j0 = 2*(i/2+1);
+
+    int ai = i/2;
+    int b = 4*(ai*nant-ai*(ai+1)/2) + 2*(i-2*ai);
+
+    const float2* iv = ants+i*s+t;
+    const float2* jv = ants+j0*s+t;
+
+    float2 u = iv[0];
+    int hoff = threadIdx.x;
+    for (int j = j0; j<2*nant; ++j) {
+	float2 v = jv[0];
+	float2 z;
+	z.x = u.x*v.x + u.y*v.y;
+	z.y = u.y*v.x - u.x*v.y;
+	h[hoff] = z;
+
+	jv += s;
+	hoff += block_width;
+    }
+
+    for (int k = fftwidth; k<s; k += fftwidth) {
+	u = iv[k];
+	jv = ants+j0*s+t;
+
+	int hoff = threadIdx.x;
+	for (int j = j0; j<2*nant; ++j) {
+	    float2 v = jv[k];
+	    float2 z;
+	    z.x = u.x*v.x + u.y*v.y;
+	    z.y = u.y*v.x - u.x*v.y;
+	    h[hoff].x += z.x;
+	    h[hoff].y += z.y;
+
+	    jv += s;
+	    hoff += block_width;
+	}
+    }
+
+    float oonfft = 1.f/nfft;
+
+    hoff = threadIdx.x;
+    for (int j = j0; j<2*nant; ++j) {
+	float2 a = h[hoff];
+	a.x *= oonfft;
+	a.y *= oonfft;
+
+	int dj = j-j0;
+	int aj = 2*(dj/2);
+	accum[(b+aj*2+(dj-aj))*nchan+t] = a;
+	hoff += block_width;
+    }
+template <int pj>
+__global__ void CCAH3(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
+}
+#endif
+
+std::vector<float2> run_CCAH3(const std::vector<float2>& data, int nant, int nfft, int nchan, int fftwidth) {
+    constexpr int npol = 2;
+    int nantxp = nant*npol;
+
+    int block_width = 128;
+    dim3 ccblock(nblocks(nchan, block_width), nantxp-1);
+
+    size_t result_sz = nant*(nant-1)/2*npol*npol*nchan;
+
+    gpu_array<float2> gpu_data(data);
+    gpu_array<float2> gpu_result(result_sz);
+
+    int shared_alloc =sizeof(float2)*(nantxp-2)*block_width;
+    CCAH3<<<ccblock, block_width, shared_alloc>>>(gpu_result.data(), gpu_data.data(), nant, nfft, nchan, fftwidth);
+    return gpu_result;
+}
+
+double time_CCAH3(int repeat_count, const float2* gpu_data, int nant, int nfft, int nchan, int fftwidth) {
+    constexpr int npol = 2;
+    int nantxp = nant*npol;
+
+    int block_width = 128;
+    dim3 ccblock(nblocks(nchan, block_width), nantxp-1);
+
+    size_t result_sz = nant*(nant-1)/2*npol*npol*nchan;
+    gpu_array<float2> gpu_result(result_sz);
+
+    int shared_alloc =sizeof(float2)*(nantxp-2)*block_width;
+    return run_kernel(repeat_count,
+	[&]() {
+	    CCAH3<<<ccblock, block_width, shared_alloc>>>(gpu_result.data(), gpu_data, nant, nfft, nchan, fftwidth);
+	});
+}
 
 std::vector<float2> run_CrossCorr(const std::vector<float2>& data, int nant, int nfft, int nchan, int fftwidth) {
     int targetThreads = 50e4;
@@ -115,8 +293,9 @@ std::vector<float2> run_CrossCorr(const std::vector<float2>& data, int nant, int
     gpu_array<float2> gpu_data(data);
     gpu_array<float2> gpu_baselinedata(result_sz*parallelAccum);
 
-    CrossCorr<<<corrBlocks, block_width>>>(gpu_data.data(), gpu_baselinedata.data(), nant, nfft/parallelAccum);
-    finaliseAccum<<<accumBlocks, block_width>>>(gpu_baselinedata.data(), parallelAccum, nfft/parallelAccum);
+    int nchunk = nfft/parallelAccum;
+    CrossCorr<<<corrBlocks, block_width>>>(gpu_data.data(), gpu_baselinedata.data(), nant, nchunk);
+    finaliseAccum<<<accumBlocks, block_width>>>(gpu_baselinedata.data(), parallelAccum, nchunk);
 
     std::vector<float2> baselinedata(gpu_baselinedata);
     std::vector<float2> result(result_sz);

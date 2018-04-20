@@ -30,11 +30,12 @@ void run_bench_ccaccum(benchmark::State& state, time_ccaccum_wrapper wrapper) {
 
 void bench_ccaccum_args(benchmark::internal::Benchmark* b) {
     for (int nant = 2; nant<=20; ++nant) {
-        int nfft = 3250;
-        for (int nchan: {512, 1024}) {
-            int fftwidth = nchan*2;
-            std::vector<int64_t> args = {nant, nfft, nchan, fftwidth};
-            b->Args(args)->UseManualTime()->Unit(benchmark::kMicrosecond);
+        for (int nfft: {1024, 2048, 3250}) {
+            for (int nchan: {512, 1024}) {
+                int fftwidth = nchan*2;
+                std::vector<int64_t> args = {nant, nfft, nchan, fftwidth};
+                b->Args(args)->UseManualTime()->Unit(benchmark::kMicrosecond);
+            }
         }
     }
 }
@@ -48,6 +49,11 @@ void bench_CCAH2(benchmark::State& state) {
     run_bench_ccaccum(state, time_CCAH2);
 }
 BENCHMARK(bench_CCAH2)->Apply(bench_ccaccum_args);
+
+void bench_CCAH3(benchmark::State& state) {
+    run_bench_ccaccum(state, time_CCAH3);
+}
+BENCHMARK(bench_CCAH3)->Apply(bench_ccaccum_args);
 
 void bench_CrossCorr(benchmark::State& state) {
     run_bench_ccaccum(state, time_CrossCorr);

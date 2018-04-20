@@ -11,15 +11,24 @@ class gpu_array {
     std::size_t n_ = 0;
 
     void gpu_move(gpu_array&& other) {
-	if (data_) cudaFree(data_);
+        release();
 	data_ = other.data_;
 	n_ = other.n_;
 	other.data_ = nullptr;
 	other.n_ = 0;
     }
 
+    void release() {
+        if (data_) {
+//            printf("cudaFree: %p\n", data_);
+            cudaFree(data_);
+        }
+        data_ = nullptr;
+        n_ = 0;
+    }
+
     void copy_from_host(const T* addr, std::size_t c) {
-	if (data_) cudaFree(data_);
+        release();
 	alloc(c);
 	cudaMemcpy(data_, addr, c*sizeof(T), cudaMemcpyHostToDevice);
 	n_ = c;
@@ -28,7 +37,11 @@ class gpu_array {
     void alloc(std::size_t c) {
 	data_ = nullptr;
 	if (c>0) {
+//            printf("cudaMalloc: sz=%tu\n", c);
+//            fflush(stdout);
 	    cudaMalloc(&data_, c*sizeof(T));
+//            printf("cudaMalloc: data=%p\n", data_);
+//            fflush(stdout);
 	    if (cudaGetLastError()!=cudaSuccess) throw std::bad_alloc();
 	}
 	n_ = c;
@@ -61,7 +74,7 @@ public:
     }
 
     ~gpu_array() {
-	if (data_) cudaFree(data_);
+        release();
     }
 
     T* data() const { return data_; }
@@ -79,9 +92,7 @@ public:
 	std::vector<T> v(n_);
 	if (n_>0) {
 	    cudaMemcpy(v.data(), data_, n_*sizeof(T), cudaMemcpyDeviceToHost);
-	    cudaFree(data_);
-	    n_ = 0;
-	    data_ = nullptr;
+	    release();
 	}
 	return v;
     }
