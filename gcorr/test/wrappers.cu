@@ -164,7 +164,7 @@ __global__ void CCAH3(cuComplex *accum, const cuComplex *ants, int nant, int nff
 	hoff += block_width;
     }
 }
-#elif 0
+#elif 1
 constexpr int ccah3_cwidth = 4096;
 // Plan:
 //  1.  Use shared mem for vector i cache with blockDim.x == ccah3_width.'
@@ -174,10 +174,21 @@ constexpr int ccah3_cwidth = 4096;
 //  3.  Horizontal accumulation is performed serially across vectors j; either pre-zero
 //      accumulator or run left-side (offset 0) kernel first.
 
+template <bool initial>
 __global__ void CCAH3(cuComplex *accum, const cuComplex *ants, int nant, int nfft, int nchan, int fftwidth) {
     extern __shared__ float2 h[ccah3_cwidth];
 
-    int t = threadIdx.x+blockIdx.x*blockDim.x;
+    assert(ccah_cwidth%nchan==0);
+    assert(
+    int t = threadIdx.x;
+    int x = 0;
+    if (initial) {
+	assert(blockIdx.x==0);
+    }
+    else {
+	x = fftwidth*(blockIdx.x+1); // second invocation: run nchan*nfft/cwidth-1 blocks.
+    }
+
     if (t>=nchan) return;
     int block_width = blockDim.x;
 
